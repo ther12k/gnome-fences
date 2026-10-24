@@ -1,0 +1,12 @@
+[package]
+name = "gnome-fences"
+version = "0.1.0"
+edition = "2021"
+description = "PecoFence-style desktop organizer for GNOME: GTK4 frontend."
+license = "Apache-2.0"
+
+[dependencies]
+gnome-fences-core = { path = "../crates/core" }
+gtk4 = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

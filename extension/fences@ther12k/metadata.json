@@ -1,0 +1,8 @@
+{
+  "uuid": "fences@ther12k",
+  "name": "Fences",
+  "description": "PecoFence-style desktop organizer. Spawns the gnome-fences application and keeps its fence panels above the wallpaper, below ordinary windows, on all workspaces, and out of app switching. Owns no UI of its own.",
+  "shell-version": ["46"],
+  "url": "https://github.com/ther12k/gnome-fences",
+  "session-modes": ["user"]
+}

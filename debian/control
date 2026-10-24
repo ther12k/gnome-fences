@@ -1,0 +1,16 @@
+Source: gnome-fences
+Section: utils
+Priority: optional
+Maintainer: ther12k <ther12k@local>
+Build-Depends: debhelper-compat (= 13), cargo, rustc, libgtk-4-dev (>= 4.14), libglib2.0-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/ther12k/gnome-fences
+
+Package: gnome-fences
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, gnome-shell (>= 46), libgtk-4-1
+Description: PecoFence-style desktop organizer for GNOME Shell
+ Organizes desktop files, folders, URLs, and applications into movable,
+ resizable, collapsible "fence" panels that sit directly above the wallpaper
+ and below ordinary windows. Built with a small GNOME Shell extension and a
+ native Rust/GTK4 application talking over session D-Bus.

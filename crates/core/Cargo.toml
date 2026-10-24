@@ -1,0 +1,14 @@
+[package]
+name = "gnome-fences-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core data model and persistence for gnome-fences (no GUI dependencies)."
+license = "Apache-2.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
