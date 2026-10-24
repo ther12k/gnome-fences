@@ -2,9 +2,9 @@
 
 use gtk4::prelude::*;
 use gtk4::{self as gtk, gio, glib};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-/// Nested main loop pattern: safe for short modal prompts, keeps call sites
-/// synchronous and simple.
 pub fn prompt_text(
     parent: &gtk::Window,
     title: &str,
@@ -44,21 +44,23 @@ pub fn prompt_text(
     content.append(&entry);
 
     let loop_ = glib::MainLoop::new(None, false);
-    let result = std::cell::RefCell::new(None);
+    let result = Rc::new(RefCell::new(None));
     let loop_c = loop_.clone();
+    let res_c = result.clone();
     dialog.connect_response(move |d, resp| {
         if resp == gtk::ResponseType::Accept {
-            *result.borrow_mut() = Some(entry.text().to_string());
+            *res_c.borrow_mut() = Some(entry.text().to_string());
         }
         d.close();
         loop_c.quit();
     });
     dialog.show();
     loop_.run();
-    result.into_inner()
+    let res = result.borrow().clone();
+    res
 }
 
-pub fn error(parent: &gtk::Widget, message: &str) {
+pub fn error(parent: &impl IsA<gtk::Widget>, message: &str) {
     let win = parent.root().and_then(|r| r.downcast::<gtk::Window>().ok());
     let dialog = gtk::Dialog::with_buttons(
         Some("gnome-fences"),
@@ -86,8 +88,6 @@ pub fn error(parent: &gtk::Widget, message: &str) {
     loop_.run();
 }
 
-/// Minimal application picker: flat list of installed apps that should be
-/// shown in menus. Returns the .desktop id chosen by the user.
 pub fn choose_app(parent: &gtk::Window) -> Option<(String, String)> {
     let dialog = gtk::Dialog::with_buttons(
         Some("Add application"),
@@ -105,10 +105,10 @@ pub fn choose_app(parent: &gtk::Window) -> Option<(String, String)> {
         .build();
     let list = gtk::ListBox::builder()
         .selection_mode(gtk::SelectionMode::None)
-        .css_classes(vec!["boxed-list".into()])
+        .css_classes(["boxed-list"])
         .build();
 
-    let choice = std::cell::RefCell::new(None);
+    let choice = Rc::new(RefCell::new(None));
     let loop_ = glib::MainLoop::new(None, false);
 
     let mut apps: Vec<gio::DesktopAppInfo> = gio::AppInfo::all()
@@ -116,16 +116,14 @@ pub fn choose_app(parent: &gtk::Window) -> Option<(String, String)> {
         .filter_map(|a| a.downcast::<gio::DesktopAppInfo>().ok())
         .filter(|a| a.should_show())
         .collect();
-    apps.sort_by_key(|a| a.display_name().map(|n| n.to_string()));
+    apps.sort_by_key(|a| a.display_name().to_string());
 
     let loop_c = loop_.clone();
     let dialog_c = dialog.clone();
     for app in apps {
-        let id = app.id().to_string();
-        let name = app
-            .display_name()
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| id.clone());
+        let Some(id_g) = app.id() else { continue };
+        let id = id_g.to_string();
+        let name = app.display_name().to_string();
         let row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .spacing(10)
@@ -136,7 +134,7 @@ pub fn choose_app(parent: &gtk::Window) -> Option<(String, String)> {
             .build();
         let icon = gtk::Image::builder().pixel_size(24).build();
         if let Some(gicon) = app.icon() {
-            icon.set_from_gicon(Some(&gicon));
+            icon.set_from_gicon(&gicon);
         }
         row.append(&icon);
         row.append(&gtk::Label::builder().label(&name).hexpand(true).xalign(0.0).build());
@@ -164,5 +162,6 @@ pub fn choose_app(parent: &gtk::Window) -> Option<(String, String)> {
     });
     dialog.show();
     loop_.run();
-    choice.into_inner()
+    let chosen = choice.borrow().clone();
+    chosen
 }

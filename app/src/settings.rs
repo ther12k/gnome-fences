@@ -4,22 +4,23 @@
 use crate::model::SharedState;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, gio};
-use std::cell::OnceCell;
+use std::cell::RefCell;
 
-fn instance() -> &'static OnceCell<Option<gtk::Window>> {
-    static CELL: std::sync::OnceLock<OnceCell<Option<gtk::Window>>> = std::sync::OnceLock::new();
-    CELL.get_or_init(OnceCell::new)
+thread_local! {
+    static SETTINGS_WIN: RefCell<Option<gtk::Window>> = const { RefCell::new(None) };
 }
 
 pub fn show(state: &SharedState) {
-    if let Some(existing) = instance().get().and_then(|w| w.as_ref()) {
-        existing.present();
+    let existing = SETTINGS_WIN.with(|c| c.borrow().clone());
+    if let Some(win) = existing {
+        win.present();
         return;
     }
 
     let win = gtk::Window::builder()
         .title("Fences — Settings")
-        .default_size(420, 300)
+        .default_width(420)
+        .default_height(300)
         .resizable(false)
         .build();
 
@@ -72,7 +73,7 @@ pub fn show(state: &SharedState) {
     let b_backup = mk("Restore last backup");
     let st = state.clone();
     b_backup.connect_clicked(move |_| {
-        if crate::main::restore_backup_and_rebuild(&st) {
+        if crate::restore_backup_and_rebuild(&st) {
             eprintln!("gnome-fences: backup restored");
         } else {
             eprintln!("gnome-fences: no usable backup found");
@@ -83,17 +84,16 @@ pub fn show(state: &SharedState) {
     box_.append(&gtk::Label::builder()
         .label("Removing an item from a fence never deletes the original.\nMoving an item between fences never moves the underlying file.")
         .wrap(true)
-        .css_classes(vec!["dim-label".into()])
+        .css_classes(["dim-label"])
         .xalign(0.0)
         .build());
 
     win.set_child(Some(&box_));
-    win.connect_close_request(|w| {
-        instance().set(None).ok();
-        let _ = w;
+    win.connect_close_request(|_| {
+        SETTINGS_WIN.with(|c| *c.borrow_mut() = None);
         gtk::glib::Propagation::Proceed
     });
 
-    let _ = instance().set(Some(win));
+    SETTINGS_WIN.with(|c| *c.borrow_mut() = Some(win.clone()));
     win.show();
 }

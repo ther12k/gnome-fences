@@ -18,7 +18,7 @@ import Gio from 'gi://Gio';
 const APP_BIN = 'gnome-fences';
 const BUS_NAME = 'io.github.ther12k.Fences.Integration';
 const BUS_PATH = '/io/github/ther12k/Fences/integration';
-const APP_BUS_NAME = 'io.github.ther12k.Fences';
+const APP_BUS_NAME = 'io.github.ther12k.Fences.App';
 const APP_BUS_PATH = '/io/github/ther12k/Fences/app';
 const APP_IFACE = 'io.github.ther12k.Fences.App';
 const TITLE_PREFIX = 'gnome-fences:';

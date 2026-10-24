@@ -31,7 +31,7 @@ impl State {
 
 pub fn make_file_item(file: &gtk4::gio::File) -> Option<Item> {
     use gtk4::prelude::*;
-    if file.get_uri_scheme().as_deref() != Some("file") {
+    if file.uri_scheme().as_deref() != Some("file") {
         return None;
     }
     let p = file.path()?;

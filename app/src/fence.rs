@@ -17,16 +17,19 @@ pub struct FenceWindow {
     pub title_label: gtk::Label,
     pub body: gtk::ScrolledWindow,
     pub collapse_btn: gtk::Button,
+    pub menu_btn: gtk::MenuButton,
+    pub header: gtk::Box,
 }
 
 pub fn build_fence(state: &SharedState, group: &Group) -> Rc<FenceWindow> {
+    let accent_class = format!("accent-{}", group.accent % crate::model::ACCENTS as u8);
     let window = gtk::Window::builder()
         .title(format!("gnome-fences:{}", group.id))
         .decorated(false)
         .resizable(true)
         .default_width(group.w)
         .default_height(group.h)
-        .css_classes(vec!["fence".into(), format!("accent-{}", group.accent % crate::model::ACCENTS as u8)])
+        .css_classes(["fence", &accent_class])
         .build();
 
     let root = gtk::Box::builder()
@@ -38,7 +41,7 @@ pub fn build_fence(state: &SharedState, group: &Group) -> Rc<FenceWindow> {
     let header = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(4)
-        .css_classes(vec!["fence-header".into()])
+        .css_classes(["fence-header"])
         .build();
 
     let title_label = gtk::Label::builder()
@@ -60,7 +63,7 @@ pub fn build_fence(state: &SharedState, group: &Group) -> Rc<FenceWindow> {
     let body = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .css_classes(vec!["fence-body".into()])
+        .css_classes(["fence-body"])
         .build();
 
     let flow = gtk::FlowBox::builder()
@@ -89,6 +92,8 @@ pub fn build_fence(state: &SharedState, group: &Group) -> Rc<FenceWindow> {
         title_label,
         body,
         collapse_btn,
+        menu_btn,
+        header,
     });
 
     install_actions(state, &fence, group);
@@ -142,7 +147,7 @@ pub fn reload_items(state: &SharedState, fence: &Rc<FenceWindow>) {
         let child = items::build_tile(state, &fence.id, &item, move |widget| {
             show_item_menu(&state_c, &fence_c, &item_menu, widget);
         });
-        fence.flow.append(&child);
+        fence.flow.insert(&child, -1);
     }
 }
 
@@ -222,7 +227,7 @@ fn show_item_menu(state: &SharedState, fence: &Rc<FenceWindow>, item: &crate::mo
 
 fn install_drop_target(state: &SharedState, fence: &Rc<FenceWindow>) {
     let dt = gtk::DropTarget::new(glib::Type::INVALID, gdk::DragAction::COPY);
-    dt.set_gtypes(&[gdk::FileList::static_type(), glib::Type::STRING]);
+    dt.set_types(&[gio::File::static_type(), glib::Type::STRING]);
 
     let state_c = state.clone();
     let fence_c = fence.clone();
@@ -255,16 +260,14 @@ fn install_drop_target(state: &SharedState, fence: &Rc<FenceWindow>) {
             return true;
         }
 
-        if let Ok(file_list) = value.get::<gdk::FileList>() {
+        if let Ok(file) = value.get::<gio::File>() {
             let mut added = false;
             state.push_undo();
             let mut layout = state.layout.borrow_mut();
             if let Some(g) = layout.group_mut(&fence.id) {
-                for file in file_list.files() {
-                    if let Some(item) = crate::model::make_file_item(&file) {
-                        g.items.push(item);
-                        added = true;
-                    }
+                if let Some(item) = crate::model::make_file_item(&file) {
+                    g.items.push(item);
+                    added = true;
                 }
             }
             drop(layout);
@@ -354,14 +357,13 @@ fn add_files_from_chooser(state: &SharedState, fence: &Rc<FenceWindow>, folders:
             state_c.push_undo();
             let mut layout = state_c.layout.borrow_mut();
             if let Some(g) = layout.group_mut(&fence_c.id) {
-                if let Ok(list) = ch.files() {
-                    let n = list.n_items();
-                    for i in 0..n {
-                        if let Some(file) = list.item(i).and_then(|o| o.downcast::<gio::File>().ok()) {
-                            if let Some(item) = crate::model::make_file_item(&file) {
-                                g.items.push(item);
-                                added = true;
-                            }
+                let list = ch.files();
+                let n = list.n_items();
+                for i in 0..n {
+                    if let Some(file) = list.item(i).and_then(|o| o.downcast::<gio::File>().ok()) {
+                        if let Some(item) = crate::model::make_file_item(&file) {
+                            g.items.push(item);
+                            added = true;
                         }
                     }
                 }
@@ -376,27 +378,31 @@ fn add_files_from_chooser(state: &SharedState, fence: &Rc<FenceWindow>, folders:
     chooser.show();
 }
 
+fn add_action<F: Fn(&gio::SimpleAction, Option<&glib::Variant>) + 'static>(
+    actions: &gio::SimpleActionGroup,
+    name: &str,
+    f: F,
+) {
+    let a = gio::SimpleAction::new(name, None);
+    a.connect_activate(f);
+    actions.add_action(&a);
+}
+
 fn install_actions(state: &SharedState, fence: &Rc<FenceWindow>, _group: &Group) {
     let actions = gio::SimpleActionGroup::new();
     fence.window.insert_action_group("win", Some(&actions));
 
-    let add = |actions: &gio::SimpleActionGroup, name: &str, f: impl Fn(&gio::SimpleAction, Option<&glib::Variant>) + 'static| {
-        let a = gio::SimpleAction::new(name, None);
-        a.connect_activate(f);
-        actions.add_action(&a);
-    };
+    let st = state.clone();
+    let fc = fence.clone();
+    add_action(&actions, "add-file", move |_, _| add_files_from_chooser(&st, &fc, false));
 
     let st = state.clone();
     let fc = fence.clone();
-    add(&actions, "add-file", move |_, _| add_files_from_chooser(&st, &fc, false));
+    add_action(&actions, "add-folder", move |_, _| add_files_from_chooser(&st, &fc, true));
 
     let st = state.clone();
     let fc = fence.clone();
-    add(&actions, "add-folder", move |_, _| add_files_from_chooser(&st, &fc, true));
-
-    let st = state.clone();
-    let fc = fence.clone();
-    add(&actions, "add-link", move |_, _| {
+    add_action(&actions, "add-link", move |_, _| {
         let Some(url) = dialogs::prompt_text(&fc.window, "Add link", "URL", "https://") else { return };
         if !(url.starts_with("http://") || url.starts_with("https://")) {
             dialogs::error(&fc.window, "Only http:// and https:// links are supported.");
@@ -414,7 +420,7 @@ fn install_actions(state: &SharedState, fence: &Rc<FenceWindow>, _group: &Group)
 
     let st = state.clone();
     let fc = fence.clone();
-    add(&actions, "add-app", move |_, _| {
+    add_action(&actions, "add-app", move |_, _| {
         if let Some((id, name)) = dialogs::choose_app(&fc.window) {
             st.push_undo();
             if let Some(g) = st.layout.borrow_mut().group_mut(&fc.id) {
@@ -427,7 +433,7 @@ fn install_actions(state: &SharedState, fence: &Rc<FenceWindow>, _group: &Group)
 
     let st = state.clone();
     let fc = fence.clone();
-    add(&actions, "rename", move |_, _| {
+    add_action(&actions, "rename", move |_, _| {
         let current = st.layout.borrow().group(&fc.id).map(|g| g.title.clone()).unwrap_or_default();
         if let Some(t) = dialogs::prompt_text(&fc.window, "Rename fence", "Title", &current) {
             st.push_undo();
@@ -462,7 +468,7 @@ fn install_actions(state: &SharedState, fence: &Rc<FenceWindow>, _group: &Group)
 
     let st = state.clone();
     let fc = fence.clone();
-    add(&actions, "collapse", move |_, _| {
+    add_action(&actions, "collapse", move |_, _| {
         let collapsed = st.layout.borrow().group(&fc.id).map(|g| g.collapsed).unwrap_or(false);
         if let Some(g) = st.layout.borrow_mut().group_mut(&fc.id) {
             g.collapsed = !collapsed;
@@ -473,7 +479,7 @@ fn install_actions(state: &SharedState, fence: &Rc<FenceWindow>, _group: &Group)
 
     let st = state.clone();
     let fc = fence.clone();
-    add(&actions, "remove", move |_, _| {
+    add_action(&actions, "remove", move |_, _| {
         st.push_undo();
         st.layout.borrow_mut().groups.retain(|g| g.id != fc.id);
         st.save();
@@ -482,7 +488,7 @@ fn install_actions(state: &SharedState, fence: &Rc<FenceWindow>, _group: &Group)
     });
 
     let st = state.clone();
-    add(&actions, "new-fence", move |_, _| {
+    add_action(&actions, "new-fence", move |_, _| {
         st.push_undo();
         let count = st.layout.borrow().groups.len();
         let g = Group::new(&format!("Fence {}", count + 1), count);
@@ -499,13 +505,13 @@ fn install_actions(state: &SharedState, fence: &Rc<FenceWindow>, _group: &Group)
     });
 
     let st = state.clone();
-    add(&actions, "undo", move |_, _| crate::main::undo_and_rebuild(&st));
+    add_action(&actions, "undo", move |_, _| crate::undo_and_rebuild(&st));
 
     let st = state.clone();
-    add(&actions, "settings", move |_, _| crate::settings::show(&st));
+    add_action(&actions, "settings", move |_, _| crate::settings::show(&st));
 
     let st = state.clone();
-    add(&actions, "quit", move |_, _| {
+    add_action(&actions, "quit", move |_, _| {
         st.save();
         st.app.quit();
     });
@@ -513,24 +519,26 @@ fn install_actions(state: &SharedState, fence: &Rc<FenceWindow>, _group: &Group)
     let fc_click = fence.clone();
     fence
         .collapse_btn
-        .connect_clicked(move |_| fc_click.window.activate_action("win.collapse", None));
+        .connect_clicked(move |_| {
+            let _ = fc_click.window.activate_action("win.collapse", None);
+        });
 
     let header_menu = gio::Menu::new();
     build_menu(&header_menu);
     let pop = gtk::PopoverMenu::builder().menu_model(&header_menu).build();
-    menu_btn.set_popover(Some(&pop));
+    fence.menu_btn.set_popover(Some(&pop));
 
     let right = gtk::GestureClick::new();
     right.set_button(gdk::BUTTON_SECONDARY);
     let pop_c = pop.clone();
-    let header_c = header.clone();
+    let header_c = fence.header.clone();
     right.connect_released(move |_, _, x, y| {
         let rect = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
         pop_c.set_pointing_to(Some(&rect));
         pop_c.set_parent(&header_c);
         pop_c.popup();
     });
-    header.add_controller(right);
+    fence.header.add_controller(right);
 }
 
 pub fn build_menu(menu: &gio::Menu) {

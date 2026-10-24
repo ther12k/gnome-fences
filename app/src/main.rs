@@ -71,7 +71,7 @@ fn main() -> glib::ExitCode {
 }
 
 fn activate(app: &gtk::Application) {
-    app.hold();
+    std::mem::forget(app.hold());
 
     load_css(app);
 
@@ -97,6 +97,7 @@ fn activate(app: &gtk::Application) {
         w.window.present();
     }
 
+    state.save();
     dbus::start(&state);
     dbus::place_all(&state);
 
@@ -114,10 +115,10 @@ fn activate(app: &gtk::Application) {
 
 fn load_css(app: &gtk::Application) {
     let provider = gtk::CssProvider::new();
-    provider.load_from_string(CSS);
+    provider.load_from_data(CSS);
     if let Some(display) = app
         .active_window()
-        .map(|w| w.display())
+        .map(|w| gtk4::prelude::WidgetExt::display(&w))
         .or_else(gtk::gdk::Display::default)
     {
         gtk::style_context_add_provider_for_display(
